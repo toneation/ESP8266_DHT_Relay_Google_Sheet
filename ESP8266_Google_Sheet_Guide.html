@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>คู่มือ ESP8266 ส่งข้อมูลไปยัง Google Sheets</title>
+  <style>
+    body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 800px; margin: auto; }
+    h1, h2, h3 { color: #2c3e50; }
+    code, pre { background: #f4f4f4; padding: 10px; border-radius: 5px; display: block; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #eee; }
+  </style>
+</head>
+<body>
+
+<h1>📘 คู่มือการติดตั้ง ESP8266 ESP-12F ส่งข้อมูลไปยัง Google Sheets</h1>
+
+<h2>🧰 อุปกรณ์ที่ต้องใช้</h2>
+<ul>
+  <li>ESP8266 ESP-12F (NodeMCU หรือบอร์ดเทียบเท่า)</li>
+  <li>DHT11 (Temperature & Humidity Sensor)</li>
+  <li>OLED 0.96" I2C (128x64)</li>
+  <li>Relay Module (1 ช่อง)</li>
+  <li>พัดลม (หรือโหลดอื่น ๆ)</li>
+  <li>สาย Dupont, Breadboard, USB cable</li>
+</ul>
+
+<h2>🔌 การเชื่อมต่อสายไฟ</h2>
+<table>
+  <tr><th>อุปกรณ์</th><th>ESP8266 ขา</th><th>หมายเหตุ</th></tr>
+  <tr><td>DHT11</td><td>D4 (GPIO2)</td><td>ข้อมูล</td></tr>
+  <tr><td>OLED SDA</td><td>GPIO14</td><td>I2C</td></tr>
+  <tr><td>OLED SCL</td><td>GPIO12</td><td>I2C</td></tr>
+  <tr><td>Relay IN</td><td>GPIO5</td><td>Active LOW</td></tr>
+  <tr><td>VCC/GND</td><td>3.3V / GND</td><td>ทุกอุปกรณ์</td></tr>
+</table>
+
+<h2>🌐 ขั้นตอนการตั้งค่า Google Sheets</h2>
+<ol>
+  <li>สร้าง Google Sheet ใหม่ และตั้งชื่อคอลัมน์แถวแรกเป็น:
+    <pre>Timestamp | Temperature | Humidity | Status</pre>
+  </li>
+  <li>ไปที่ <strong>Extensions > Apps Script</strong> แล้ววางโค้ดนี้:
+    <pre><code>function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var timestamp = new Date();
+  var temp = e.parameter.temp;
+  var hum = e.parameter.hum;
+  var status = e.parameter.status;
+  sheet.appendRow([timestamp, temp, hum, status]);
+  return ContentService.createTextOutput("Data recorded");
+}</code></pre>
+  </li>
+  <li>Deploy เป็น Web App:
+    <ul>
+      <li>Deploy > New deployment</li>
+      <li>เลือก “Web App”</li>
+      <li>Execute as: Me</li>
+      <li>Who has access: Anyone</li>
+      <li>กด Deploy แล้วคัดลอก Web App URL</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>🧠 โค้ด Arduino (ตัดข้อมูลสำคัญออกแล้ว)</h2>
+<pre><code>#include &lt;Wire.h&gt;
+#include &lt;Adafruit_SSD1306.h&gt;
+#include &lt;Adafruit_GFX.h&gt;
+#include &lt;DHT.h&gt;
+#include &lt;ESP8266WiFi.h&gt;
+#include &lt;ESP8266HTTPClient.h&gt;
+#include &lt;WiFiClientSecure.h&gt;
+
+// CONFIGURATION
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+const char* scriptURL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
+
+// HARDWARE SETUP
+#define DHT_PIN 2
+#define DHT_TYPE DHT11
+#define RELAY_PIN 5
+#define OLED_SDA 14
+#define OLED_SCL 12
+#define OLED_ADDR 0x3C
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define TEMP_THRESHOLD 25.0
+
+// TIMING
+const unsigned long readInterval = 10000;
+const unsigned long sendInterval = 60000;
+unsigned long lastReadTime = 0;
+unsigned long lastSendTime = 0;
+
+// OBJECTS
+DHT dht(DHT_PIN, DHT_TYPE);
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+float currentTemp = 0.0, currentHum = 0.0;
+String currentStatus = "OFF";
+
+// OLED DISPLAY
+void printToOLED(String statusMsg, float temp, float hum) {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor((SCREEN_WIDTH - 6 * 11) / 2, 0);
+  display.print("Fan Status");
+  display.setTextSize(2);
+  display.setCursor((SCREEN_WIDTH - statusMsg.length() * 12) / 2, 16);
+  display.println(statusMsg);
+  display.setTextSize(1);
+  display.setCursor(0, 44);
+  display.print("Temp: "); display.print(temp, 1); display.println(" C");
+  display.setCursor(0, 54);
+  display.print("Humidity: "); display.print(hum, 1); display.println(" %");
+  display.display();
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+  Wire.begin(OLED_SDA, OLED_SCL);
+  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+  dht.begin();
+  printToOLED("Set up", 0.0, 0.0);
+  delay(3000);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500); Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+  lastReadTime = millis();
+  lastSendTime = millis();
+}
+
+void loop() {
+  unsigned long now = millis();
+
+  if (now - lastReadTime >= readInterval) {
+    lastReadTime = now;
+    float temp = dht.readTemperature();
+    float hum = dht.readHumidity();
+    if (!isnan(temp) && !isnan(hum)) {
+      currentTemp = temp;
+      currentHum = hum;
+      currentStatus = (temp < TEMP_THRESHOLD) ? "OFF" : "ON";
+      digitalWrite(RELAY_PIN, (currentStatus == "ON") ? LOW : HIGH);
+      printToOLED(currentStatus, currentTemp, currentHum);
+    }
+  }
+
+  if (now - lastSendTime >= sendInterval) {
+    lastSendTime = now;
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      WiFiClientSecure client;
+      client.setInsecure();
+      String url = String(scriptURL) + "?temp=" + String(currentTemp, 1) + "&hum=" + String(currentHum, 1) + "&status=" + currentStatus;
+      http.begin(client, url);
+      int httpCode = http.GET();
+      if (httpCode > 0) Serial.println("Data sent");
+      else Serial.printf("HTTP Error: %s\n", http.errorToString(httpCode).c_str());
+      http.end();
+    }
+  }
+}
+</code></pre>
+
+<h2>🔐 หมายเหตุด้านความปลอดภัย</h2>
+<ul>
+  <li>ห้ามเผยแพร่ ssid, password หรือ scriptURL ต่อสาธารณะ</li>
+  <li>หากต้องการความปลอดภัยสูงขึ้น ควรใช้ token หรือรหัสผ่านร่วมกับ Web App</li>
+</ul>
+
+</body>
+</html>
