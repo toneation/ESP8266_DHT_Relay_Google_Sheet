@@ -1,0 +1,9 @@
+- Reads temperature and humidity from a DHT11 sensor
+- Displays the readings and device status on a 0.96" I2C OLED screen (SDA = GPIO14, SCL = GPIO12)
+- Controls a relay on GPIO5: turns ON when temperature exceeds 25°C
+- Connects to Wi-Fi using specified SSID and password
+- Sends data to a Google Apps Script Web App via HTTPS using WiFiClientSecure
+- Sends: temp, hum, status ("ON"/"OFF") every 60 seconds
+- Reads sensor every 10 seconds
+- Uses libraries: DHT, Adafruit_SSD1306, ESP8266WiFi, WiFiClientSecure, HTTPClient
+- Code should be clean, well-structured, and reliable
