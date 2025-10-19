@@ -69,14 +69,22 @@
   <div id="chart_status" style="height: 300px;"></div>
 
   <script>
+    let currentRange = 'latest';
+
     google.charts.load('current', {'packages':['corechart']});
-    google.charts.setOnLoadCallback(() => drawCharts('latest'));
+    google.charts.setOnLoadCallback(() => {
+      drawCharts(currentRange);
+      setInterval(() => drawCharts(currentRange), 60000); // ✅ รีเฟรชทุก 60 วินาที
+    });
+
+    window.onresize = () => drawCharts(currentRange); // ✅ ปรับกราฟเมื่อเปลี่ยนขนาดหน้าจอ
 
     function drawCharts(range) {
+      currentRange = range;
       document.getElementById('chart_temp').innerHTML = "⏳ กำลังโหลดข้อมูล...";
       document.getElementById('chart_status').innerHTML = "";
 
-      fetch('https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec?mode=getData&range=' + range)
+      fetch('https://script.google.com/macros/s/AKfycbzTr10hY-H6eESTRoICpX0Us8N-qtm3FQlhkdVAuot7ebs8ZbKwA1vIGzx-SK5omnbhog/exec?mode=getData&range=' + range)
         .then(response => response.json())
         .then(data => {
           const tempData = [['Timestamp', 'Temperature', 'Humidity']];
@@ -110,7 +118,9 @@
             curveType: 'function',
             legend: { position: 'bottom' },
             hAxis: { title: 'Time' },
-            vAxis: { title: 'Value' }
+            vAxis: { title: 'Value' },
+            width: '100%',
+            height: '100%'
           };
 
           const statusOptions = {
@@ -120,7 +130,9 @@
             vAxis: {
               title: 'Status',
               ticks: [{v:0, f:'OFF'}, {v:1, f:'ON'}]
-            }
+            },
+            width: '100%',
+            height: '100%'
           };
 
           new google.visualization.LineChart(document.getElementById('chart_temp')).draw(tempTable, tempOptions);
